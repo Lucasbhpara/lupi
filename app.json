@@ -19,6 +19,10 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ]
     },
@@ -71,6 +75,9 @@
         "projectId": "fa1618e4-55c3-4aef-bae9-fe71ffda960c"
       }
     },
-    "owner": "lucassbh327"
+    "owner": "lucassbh327",
+    "updates": {
+      "url": "https://u.expo.dev/fa1618e4-55c3-4aef-bae9-fe71ffda960c"
+    }
   }
 }
