@@ -57,9 +57,10 @@ git push -u origin main
 ## Gerar o app para o celular
 
 GitHub → repositório `lupi` → **Actions** → **Build Android (EAS local)** →
-**Run workflow** → `preview` (gera um APK para instalar direto no celular).
+**Run workflow** → troque o perfil para `preview` (gera um APK para instalar
+direto no celular; o `playstore` gera o .aab da loja).
 
-Quando terminar (uns 20 a 30 min), abra a execução, baixe **lupi-preview** em
+Quando terminar (uns 20 a 30 min), abra a execução, baixe **app-release-preview** em
 *Artifacts*, descompacte e instale o `app-release.apk` no celular.
 
 > O LUPI **não roda no Expo Go**: o reconhecimento de voz precisa do app instalado.

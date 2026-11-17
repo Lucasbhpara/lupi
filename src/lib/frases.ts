@@ -79,6 +79,45 @@ export function acharFrase(ouvido: string, frase: string, inicio: number): { pos
   return null;
 }
 
+/**
+ * Onde cada gatilho aparece nas páginas: em qual página e em que trecho do texto
+ * dela (para destacar e para saber em que página o som está).
+ */
+export function localizarGatilhos(paginas: string[], frases: { id: string; palavra_chave: string }[]) {
+  const baixas = paginas.map((p) => p.toLowerCase());
+  const achados = new Map<string, { pagina: number; ini: number; fim: number }>();
+  let pg = 0;
+  let pos = 0;
+  for (const g of frases) {
+    const f = g.palavra_chave.toLowerCase();
+    let achou: { pagina: number; ini: number; fim: number } | null = null;
+    // Procura a partir de onde parou; se não achar, procura do começo.
+    for (const [inicioPg, inicioPos] of [
+      [pg, pos],
+      [0, 0],
+    ] as const) {
+      for (let p = inicioPg; p < baixas.length && !achou; p++) {
+        const i = baixas[p].indexOf(f, p === inicioPg ? inicioPos : 0);
+        if (i >= 0) achou = { pagina: p, ini: i, fim: i + f.length };
+      }
+      if (achou) break;
+    }
+    if (!achou) continue;
+    achados.set(g.id, achou);
+    pg = achou.pagina;
+    pos = achou.fim;
+  }
+  return achados;
+}
+
+/** As últimas palavras de uma página: quando o microfone ouve, a página vira. */
+export function fraseFinal(textoPagina: string) {
+  const palavras = normalizar(textoPagina)
+    .split(' ')
+    .filter((p) => p && p !== 'fim');
+  return palavras.slice(-3).join(' ');
+}
+
 /** Onde cada palavra-gatilho aparece no texto da história (para destacar). */
 export function marcarGatilhosNoTexto(texto: string, frases: { id: string; palavra_chave: string }[]) {
   const baixo = texto.toLowerCase();

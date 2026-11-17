@@ -2,8 +2,10 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, Image, RefreshControl } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { HistoriaResumo, Perfil, listarEstante, marcarFavorita } from '../data/api';
-import { colors, radius, spacing } from '../theme/colors';
+import { colors, corClaraDaVez, corDaVez, radius, spacing } from '../theme/colors';
 import Rodape from '../components/Rodape';
+import Avatar from '../components/Avatar';
+import FaixaArcoIris from '../components/FaixaArcoIris';
 
 type Props = {
   perfil: Perfil;
@@ -57,36 +59,31 @@ export default function EstanteScreen({ perfil, onTrocarPerfil, onLer }: Props) 
         <View style={styles.linhaTopo}>
           <Text style={styles.logo}>LUPI</Text>
           <TouchableOpacity style={styles.perfilBotao} onPress={onTrocarPerfil} accessibilityLabel="Trocar de perfil">
-            <View style={[styles.bolinha, { backgroundColor: perfil.cor || colors.azul }]}>
-              <Text style={styles.bolinhaTexto}>{perfil.nome.slice(0, 1).toUpperCase()}</Text>
-            </View>
+            <Avatar perfil={perfil} tamanho={40} />
             <Text style={styles.perfilNome}>{perfil.nome}</Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.saudacao}>Oi, {perfil.nome}! Qual história hoje?</Text>
       </View>
+      <FaixaArcoIris altura={6} />
 
-      <ScrollView
-        contentContainerStyle={styles.conteudo}
-        refreshControl={<RefreshControl refreshing={atualizando} onRefresh={atualizar} />}
-      >
+      <ScrollView contentContainerStyle={styles.conteudo} refreshControl={<RefreshControl refreshing={atualizando} onRefresh={atualizar} />}>
         {!historias && !erro && <ActivityIndicator color={colors.navy} size="large" style={{ marginTop: 40 }} />}
         {erro && <Text style={styles.erro}>{erro}</Text>}
 
         {continuar && (
           <View style={styles.secao}>
             <Text style={styles.secaoTitulo}>Continuar lendo</Text>
-            <View style={styles.continuar}>
-              <Capa historia={continuar} pequena />
+            <TouchableOpacity
+              style={[styles.continuar, { backgroundColor: corClara(continuar, 0), borderColor: corForte(continuar, 0) }]}
+              onPress={() => onLer(continuar.id)}
+            >
+              <Capa historia={continuar} indice={0} pequena />
               <View style={{ flex: 1, gap: 6 }}>
                 <Text style={styles.cardTitulo}>{continuar.titulo}</Text>
-                <Text style={styles.cardInfo}>{continuar.totalSons} sons</Text>
-                <Barra valor={continuar.progresso} />
+                <Barra valor={continuar.progresso} cor={corForte(continuar, 0)} />
                 <Text style={styles.cardInfo}>{continuar.progresso}% lido</Text>
               </View>
-            </View>
-            <TouchableOpacity style={styles.botaoLer} onPress={() => onLer(continuar.id)}>
-              <Text style={styles.botaoLerTexto}>Ler agora</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -95,7 +92,7 @@ export default function EstanteScreen({ perfil, onTrocarPerfil, onLer }: Props) 
           <View style={styles.abas}>
             {(['todas', 'favoritas'] as const).map((f) => (
               <TouchableOpacity key={f} style={[styles.aba, filtro === f && styles.abaAtiva]} onPress={() => setFiltro(f)}>
-                <Text style={[styles.abaTexto, filtro === f && styles.abaTextoAtiva]}>{f === 'todas' ? 'Estante' : 'Favoritas'}</Text>
+                <Text style={[styles.abaTexto, filtro === f && styles.abaTextoAtiva]}>{f === 'todas' ? '📚 Estante' : '❤️ Favoritas'}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -107,91 +104,103 @@ export default function EstanteScreen({ perfil, onTrocarPerfil, onLer }: Props) 
           )}
 
           <View style={styles.grade}>
-            {lista.map((h) => (
-              <TouchableOpacity key={h.id} style={styles.card} onPress={() => onLer(h.id)}>
+            {lista.map((h, i) => (
+              <TouchableOpacity
+                key={h.id}
+                style={[styles.card, { backgroundColor: corClara(h, i), borderColor: corForte(h, i) }]}
+                onPress={() => onLer(h.id)}
+              >
                 <View>
-                  <Capa historia={h} />
+                  <Capa historia={h} indice={i} />
                   <TouchableOpacity
                     style={styles.coracao}
                     onPress={() => alternarFavorita(h)}
                     accessibilityLabel={h.favorita ? 'Tirar das favoritas' : 'Guardar nas favoritas'}
                   >
-                    <Text style={{ color: h.favorita ? colors.vermelho : colors.textoClaro, fontSize: 18 }}>{h.favorita ? '♥' : '♡'}</Text>
+                    <Text style={{ color: h.favorita ? colors.vermelho : colors.textoClaro, fontSize: 20 }}>{h.favorita ? '♥' : '♡'}</Text>
                   </TouchableOpacity>
+                  {h.concluida && (
+                    <View style={styles.selo}>
+                      <Text style={styles.seloTexto}>⭐ Lida!</Text>
+                    </View>
+                  )}
                 </View>
                 <Text style={styles.cardTitulo} numberOfLines={2}>
                   {h.titulo}
                 </Text>
-                {h.faixa_etaria && <Text style={styles.cardInfo}>{h.faixa_etaria}</Text>}
-                {h.progresso > 0 && <Barra valor={h.concluida ? 100 : h.progresso} />}
+                <Text style={styles.cardInfo}>
+                  {h.totalSons} sons{h.faixa_etaria ? ` · ${h.faixa_etaria}` : ''}
+                </Text>
+                {h.progresso > 0 && !h.concluida && <Barra valor={h.progresso} cor={corForte(h, i)} />}
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        <Rodape />
+        <Rodape comMensagem />
       </ScrollView>
     </View>
   );
 }
 
-function Capa({ historia, pequena = false }: { historia: HistoriaResumo; pequena?: boolean }) {
+// A cor da história (se cadastrada) ou uma cor do arco-íris pela posição.
+function corForte(h: HistoriaResumo, i: number) {
+  return h.cor || corDaVez(i);
+}
+function corClara(h: HistoriaResumo, i: number) {
+  if (!h.cor) return corClaraDaVez(i);
+  return h.cor + '26'; // a mesma cor, bem transparente
+}
+
+function Capa({ historia, indice, pequena = false }: { historia: HistoriaResumo; indice: number; pequena?: boolean }) {
   const estilo = pequena ? styles.capaPequena : styles.capa;
   if (historia.capa_url) return <Image source={{ uri: historia.capa_url }} style={estilo} resizeMode="cover" />;
   return (
-    <View style={[estilo, styles.capaVazia]}>
-      <Text style={[styles.capaLetra, pequena && { fontSize: 28 }]}>{historia.titulo.slice(0, 1)}</Text>
+    <View style={[estilo, styles.capaVazia, { backgroundColor: corForte(historia, indice) }]}>
+      <Text style={{ fontSize: pequena ? 28 : 44 }} numberOfLines={1} adjustsFontSizeToFit>
+        {historia.cena || historia.titulo.slice(0, 1)}
+      </Text>
     </View>
   );
 }
 
-function Barra({ valor }: { valor: number }) {
+function Barra({ valor, cor }: { valor: number; cor: string }) {
   return (
     <View style={styles.barra}>
-      <View style={[styles.barraCheia, { width: `${Math.max(0, Math.min(100, valor))}%` }]} />
+      <View style={[styles.barraCheia, { width: `${Math.max(0, Math.min(100, valor))}%`, backgroundColor: cor }]} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   fundo: { flex: 1, backgroundColor: colors.fundo },
-  topo: {
-    backgroundColor: colors.navy,
-    paddingTop: 52,
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xl,
-    borderBottomLeftRadius: radius.xl,
-    borderBottomRightRadius: radius.xl,
-  },
+  topo: { backgroundColor: colors.navy, paddingTop: 48, paddingHorizontal: spacing.xl, paddingBottom: spacing.xl },
   linhaTopo: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   logo: { color: colors.branco, fontSize: 26, fontWeight: '900', letterSpacing: 2 },
-  perfilBotao: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.navy2, borderRadius: radius.full, padding: 4, paddingRight: 14, minHeight: 44 },
-  bolinha: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  bolinhaTexto: { color: colors.branco, fontWeight: '800', fontSize: 16 },
-  perfilNome: { color: colors.branco, fontWeight: '700', fontSize: 14 },
-  saudacao: { color: colors.branco, fontSize: 20, fontWeight: '700', marginTop: spacing.lg },
+  perfilBotao: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.navy2, borderRadius: radius.full, padding: 4, paddingRight: 14, minHeight: 48 },
+  perfilNome: { color: colors.branco, fontWeight: '800', fontSize: 15 },
+  saudacao: { color: colors.branco, fontSize: 21, fontWeight: '800', marginTop: spacing.lg },
   conteudo: { padding: spacing.xl, gap: spacing.xxl },
   erro: { color: colors.branco, backgroundColor: colors.vermelho, padding: spacing.md, borderRadius: radius.md },
   secao: { gap: spacing.md },
-  secaoTitulo: { fontSize: 18, fontWeight: '800', color: colors.texto },
-  continuar: { flexDirection: 'row', gap: spacing.md, backgroundColor: colors.branco, borderRadius: radius.lg, padding: spacing.md, alignItems: 'center' },
-  botaoLer: { backgroundColor: colors.verde, borderRadius: radius.md, minHeight: 50, alignItems: 'center', justifyContent: 'center' },
-  botaoLerTexto: { color: colors.branco, fontWeight: '800', fontSize: 17 },
+  secaoTitulo: { fontSize: 19, fontWeight: '900', color: colors.texto },
+  continuar: { flexDirection: 'row', gap: spacing.md, borderRadius: radius.lg, padding: spacing.md, alignItems: 'center', borderWidth: 2 },
   abas: { flexDirection: 'row', gap: spacing.sm },
-  aba: { paddingHorizontal: spacing.lg, minHeight: 40, justifyContent: 'center', borderRadius: radius.full, backgroundColor: colors.branco, borderWidth: 1, borderColor: colors.borda },
+  aba: { paddingHorizontal: spacing.lg, minHeight: 44, justifyContent: 'center', borderRadius: radius.full, backgroundColor: colors.branco, borderWidth: 1, borderColor: colors.borda },
   abaAtiva: { backgroundColor: colors.navy, borderColor: colors.navy },
-  abaTexto: { fontWeight: '700', color: colors.textoSuave },
+  abaTexto: { fontWeight: '800', color: colors.textoSuave, fontSize: 15 },
   abaTextoAtiva: { color: colors.branco },
-  vazio: { color: colors.textoSuave, fontSize: 14, paddingVertical: spacing.lg },
+  vazio: { color: colors.textoSuave, fontSize: 15, paddingVertical: spacing.lg },
   grade: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  card: { width: '47%', gap: 6 },
-  capa: { width: '100%', aspectRatio: 0.75, borderRadius: radius.lg },
-  capaPequena: { width: 72, height: 96, borderRadius: radius.md },
-  capaVazia: { backgroundColor: colors.navy2, alignItems: 'center', justifyContent: 'center' },
-  capaLetra: { color: colors.azul, fontSize: 56, fontWeight: '900' },
-  coracao: { position: 'absolute', top: 8, right: 8, width: 36, height: 36, borderRadius: 18, backgroundColor: colors.branco, alignItems: 'center', justifyContent: 'center' },
-  cardTitulo: { fontSize: 15, fontWeight: '800', color: colors.texto },
-  cardInfo: { fontSize: 12, color: colors.textoSuave },
-  barra: { height: 8, borderRadius: 4, backgroundColor: colors.borda, overflow: 'hidden' },
-  barraCheia: { height: 8, backgroundColor: colors.verde },
+  card: { width: '47.5%', gap: 6, borderRadius: radius.lg, padding: spacing.sm, borderWidth: 2 },
+  capa: { width: '100%', aspectRatio: 0.85, borderRadius: radius.md },
+  capaPequena: { width: 72, height: 88, borderRadius: radius.md },
+  capaVazia: { alignItems: 'center', justifyContent: 'center', padding: 6 },
+  coracao: { position: 'absolute', top: 8, right: 8, width: 40, height: 40, borderRadius: 20, backgroundColor: colors.branco, alignItems: 'center', justifyContent: 'center' },
+  selo: { position: 'absolute', bottom: 8, left: 8, backgroundColor: colors.branco, borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 4 },
+  seloTexto: { fontSize: 12, fontWeight: '800', color: colors.texto },
+  cardTitulo: { fontSize: 16, fontWeight: '900', color: colors.texto },
+  cardInfo: { fontSize: 12, color: colors.textoSuave, fontWeight: '600' },
+  barra: { height: 8, borderRadius: 4, backgroundColor: colors.branco, overflow: 'hidden' },
+  barraCheia: { height: 8 },
 });

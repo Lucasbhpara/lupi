@@ -14,5 +14,8 @@ web-build/
 *.tsbuildinfo
 npm-debug.*
 
+# APKs baixados do GitHub Actions
+app-release*
+
 # Os MP3 originais ficam no Supabase (Storage), não precisam ir pro Git.
 /*.mp3

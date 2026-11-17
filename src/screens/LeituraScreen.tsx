@@ -1,14 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, Switch } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, Image } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { Gatilho, Historia, Perfil, carregarHistoria, iniciarLeitura, salvarProgresso } from '../data/api';
-import { acharFrase, marcarGatilhosNoTexto, normalizar } from '../lib/frases';
+import { acharFrase, fraseFinal, localizarGatilhos, normalizar } from '../lib/frases';
 import { MesaDeSom } from '../lib/mesaDeSom';
-import { colors, radius, spacing } from '../theme/colors';
+import { colors, corClaraDaVez, corDaVez, radius, spacing } from '../theme/colors';
 import Rodape from '../components/Rodape';
+import FaixaArcoIris from '../components/FaixaArcoIris';
 
 type Props = { perfil: Perfil; historiaId: string; onVoltar: () => void };
+type Local = { pagina: number; ini: number; fim: number };
 
 export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
   const [historia, setHistoria] = useState<Historia | null>(null);
@@ -18,14 +20,18 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
   const [tocados, setTocados] = useState<string[]>([]); // ids dos gatilhos que já tocaram
   const [ultimoSom, setUltimoSom] = useState<string | null>(null);
   const [ouvidoAgora, setOuvidoAgora] = useState('');
+  const [pagina, setPagina] = useState(0);
+  const [terminou, setTerminou] = useState(false);
 
   const mesa = useRef(new MesaDeSom()).current;
   const leituraId = useRef<string | null>(null);
   const ouvindoRef = useRef(false);
+  const paginaRef = useRef(0);
   const tocadosRef = useRef<Set<string>>(new Set());
   const finais = useRef(''); // tudo o que o microfone já ouviu, frases fechadas
   const consumido = useRef(0); // até onde do texto ouvido já foi conferido
   const timerSom = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scroll = useRef<ScrollView>(null);
 
   // ---------- Carregar a história e os sons ----------
   useEffect(() => {
@@ -54,24 +60,39 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
     };
   }, [historiaId, perfil.id, mesa]);
 
-  // ---------- Destaques no texto ----------
-  const marcas = useMemo(() => (historia ? marcarGatilhosNoTexto(historia.texto, historia.gatilhos) : []), [historia]);
-  const proximo = historia?.gatilhos.find((g) => !tocados.includes(g.id)) ?? null;
+  // ---------- Onde está cada som ----------
+  const textos = useMemo(() => (historia ? historia.paginas.map((p) => p.texto) : []), [historia]);
+  const locais = useMemo<Map<string, Local>>(
+    () => (historia ? localizarGatilhos(textos, historia.gatilhos) : new Map()),
+    [historia, textos]
+  );
+  const finaisDePagina = useMemo(() => textos.map(fraseFinal), [textos]);
+  const totalPaginas = textos.length;
 
-  const progresso = useMemo(() => {
-    if (!historia || historia.gatilhos.length === 0) return 0;
-    // Quanto do texto já foi lido = até o último som que tocou.
-    let fim = 0;
-    for (const m of marcas) if (tocados.includes(m.id)) fim = Math.max(fim, m.fim);
-    const porTexto = Math.round((fim / historia.texto.length) * 100);
-    return tocados.length === historia.gatilhos.length ? 100 : Math.min(99, porTexto);
-  }, [historia, marcas, tocados]);
+  const progresso = terminou ? 100 : totalPaginas ? Math.round((pagina / totalPaginas) * 100) : 0;
 
-  // Salva o progresso no banco sempre que um som novo toca.
+  // Salva o progresso quando muda de página ou termina.
   useEffect(() => {
-    if (!leituraId.current || tocados.length === 0) return;
-    salvarProgresso(leituraId.current, progresso, progresso === 100).catch(() => {});
-  }, [tocados.length, progresso]);
+    if (!leituraId.current || (pagina === 0 && !terminou)) return;
+    salvarProgresso(leituraId.current, progresso, terminou).catch(() => {});
+  }, [pagina, terminou, progresso]);
+
+  // ---------- Páginas ----------
+  const irPara = useCallback(
+    (nova: number) => {
+      if (!historia) return;
+      if (nova >= historia.paginas.length) {
+        setTerminou(true);
+        return;
+      }
+      const p = Math.max(0, nova);
+      paginaRef.current = p;
+      setPagina(p);
+      setTerminou(false);
+      scroll.current?.scrollTo({ y: 0, animated: true });
+    },
+    [historia]
+  );
 
   // ---------- Disparar sons ----------
   const disparar = useCallback(
@@ -91,20 +112,38 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
       if (!historia) return;
       const ouvido = normalizar(textoOuvido);
       if (consumido.current > ouvido.length) consumido.current = ouvido.length;
-      // Pode haver mais de um gatilho na mesma frase: confere em sequência.
-      for (let volta = 0; volta < 5; volta++) {
-        let melhor: { g: Gatilho; pos: number; fim: number } | null = null;
+      for (let volta = 0; volta < 6; volta++) {
+        const atual = paginaRef.current;
+        let melhor: { tipo: 'som' | 'pagina'; g?: Gatilho; pos: number; fim: number } | null = null;
+        // Sons da página atual e da seguinte (caso tenham pulado para a frente).
         for (const g of historia.gatilhos) {
           if (tocadosRef.current.has(g.id)) continue;
+          const pg = locais.get(g.id)?.pagina ?? atual;
+          if (pg < atual || pg > atual + 1) continue;
           const achado = acharFrase(ouvido, normalizar(g.palavra_chave), consumido.current);
-          if (achado && (!melhor || achado.pos < melhor.pos)) melhor = { g, ...achado };
+          if (achado && (!melhor || achado.pos < melhor.pos)) melhor = { tipo: 'som', g, ...achado };
+        }
+        // Fim da página atual: vira a página sozinho.
+        const fimPg = finaisDePagina[atual];
+        if (fimPg) {
+          const achado = acharFrase(ouvido, fimPg, consumido.current);
+          if (achado && (!melhor || achado.pos < melhor.pos)) melhor = { tipo: 'pagina', ...achado };
         }
         if (!melhor) break;
         consumido.current = melhor.fim;
-        disparar(melhor.g);
+        if (melhor.tipo === 'som' && melhor.g) {
+          const pg = locais.get(melhor.g.id)?.pagina ?? atual;
+          if (pg > atual) irPara(pg);
+          disparar(melhor.g);
+        } else {
+          // Um respiro antes de virar, para dar tempo de ver a página inteira.
+          const proxima = atual + 1;
+          paginaRef.current = Math.min(proxima, totalPaginas - 1);
+          setTimeout(() => irPara(proxima), 1200);
+        }
       }
     },
-    [historia, disparar]
+    [historia, locais, finaisDePagina, disparar, irPara, totalPaginas]
   );
 
   // ---------- Microfone ----------
@@ -122,7 +161,7 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
   });
 
   useSpeechRecognitionEvent('error', (ev) => {
-    if (ev.error === 'no-speech' || ev.error === 'speech-timeout' || ev.error === 'aborted') return; // o 'end' religa
+    if (ev.error === 'no-speech' || ev.error === 'speech-timeout' || ev.error === 'aborted') return;
     if (ev.error === 'not-allowed') {
       pararDeOuvir();
       setErro('O LUPI precisa da permissão do microfone. Libere nas configurações do celular.');
@@ -137,12 +176,7 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
   });
 
   function comecarReconhecimento() {
-    ExpoSpeechRecognitionModule.start({
-      lang: 'pt-BR',
-      interimResults: true,
-      continuous: true,
-      maxAlternatives: 1,
-    });
+    ExpoSpeechRecognitionModule.start({ lang: 'pt-BR', interimResults: true, continuous: true, maxAlternatives: 1 });
   }
 
   async function ligarMicrofone() {
@@ -165,15 +199,17 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
     mesa.pausarTrilha();
   }
 
-  function recomecar() {
+  function lerDeNovo() {
     tocadosRef.current = new Set();
     setTocados([]);
     finais.current = '';
     consumido.current = 0;
     setOuvidoAgora('');
+    irPara(0);
   }
 
-  function alternarTrilha(v: boolean) {
+  function alternarTrilha() {
+    const v = !trilhaLigada;
     setTrilhaLigada(v);
     mesa.ligarTrilha(v, ouvindoRef.current);
   }
@@ -185,8 +221,8 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
         {erro ? (
           <>
             <Text style={styles.erro}>{erro}</Text>
-            <TouchableOpacity style={[styles.botaoRedondo, { marginTop: spacing.lg }]} onPress={onVoltar}>
-              <Text style={styles.botaoRedondoTexto}>‹</Text>
+            <TouchableOpacity style={[styles.botaoGrande, { marginTop: spacing.lg }]} onPress={onVoltar}>
+              <Text style={styles.botaoGrandeTexto}>Voltar à estante</Text>
             </TouchableOpacity>
           </>
         ) : (
@@ -196,7 +232,12 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
     );
   }
 
-  const paragrafos = montarParagrafos(historia.texto, marcas, tocados, proximo?.id ?? null);
+  const corHistoria = historia.cor || colors.azul;
+  const pag = historia.paginas[pagina];
+  const corPagina = pag.cor || corDaVez(pagina);
+  const fundoPagina = corClaraDaVez(pagina);
+  const proximoId = historia.gatilhos.find((g) => !tocados.includes(g.id) && locais.get(g.id)?.pagina === pagina)?.id ?? null;
+  const partes = montarPartes(pag.texto, pagina, locais, tocados, proximoId);
 
   return (
     <View style={styles.fundo}>
@@ -209,74 +250,97 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
           <Text style={styles.titulo} numberOfLines={1}>
             {historia.titulo}
           </Text>
-          <View style={{ width: 44 }} />
+          {historia.trilha_url ? (
+            <TouchableOpacity
+              style={[styles.botaoTopo, trilhaLigada && { backgroundColor: colors.verde }]}
+              onPress={alternarTrilha}
+              accessibilityLabel={trilhaLigada ? 'Desligar a música de fundo' : 'Ligar a música de fundo'}
+            >
+              <Text style={styles.botaoTopoIcone}>{trilhaLigada ? '🎵' : '🔇'}</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 44 }} />
+          )}
         </View>
         <View style={styles.barra}>
-          <View style={[styles.barraCheia, { width: `${progresso}%` }]} />
+          <View style={[styles.barraCheia, { width: `${progresso}%`, backgroundColor: corHistoria }]} />
         </View>
         <View style={styles.linhaInfo}>
-          <Text style={styles.info}>{progresso}% lido</Text>
           <Text style={styles.info}>
-            {tocados.length} de {historia.gatilhos.length} sons tocados
+            Página {pagina + 1} de {totalPaginas}
+          </Text>
+          <Text style={styles.info}>
+            {tocados.length} de {historia.gatilhos.length} sons
           </Text>
         </View>
       </View>
+      <FaixaArcoIris altura={5} />
 
-      <ScrollView contentContainerStyle={styles.conteudo}>
-        {ultimoSom && (
-          <View style={styles.tocando}>
-            <View style={styles.tocandoBolinha} />
-            <Text style={styles.tocandoTexto}>Tocando: {ultimoSom}</Text>
+      <ScrollView ref={scroll} contentContainerStyle={styles.conteudo}>
+        {terminou ? (
+          <View style={[styles.fim, { borderColor: corHistoria }]}>
+            <Text style={styles.fimEmoji}>⭐🎉⭐</Text>
+            <Text style={styles.fimTitulo}>Parabéns, {perfil.nome}!</Text>
+            <Text style={styles.fimTexto}>Vocês terminaram "{historia.titulo}".</Text>
+            <TouchableOpacity style={styles.botaoGrande} onPress={lerDeNovo}>
+              <Text style={styles.botaoGrandeTexto}>Ler de novo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.botaoGrande, { backgroundColor: colors.navy }]} onPress={onVoltar}>
+              <Text style={styles.botaoGrandeTexto}>Escolher outra história</Text>
+            </TouchableOpacity>
           </View>
-        )}
+        ) : (
+          <>
+            {/* Ilustração da página: imagem cadastrada ou a "cena" em desenhos */}
+            <View style={[styles.ilustracao, { backgroundColor: fundoPagina, borderColor: corPagina }]}>
+              {pag.imagem_url ? (
+                <Image source={{ uri: pag.imagem_url }} style={styles.imagem} resizeMode="contain" />
+              ) : (
+                <Text style={styles.cena} adjustsFontSizeToFit numberOfLines={1}>
+                  {pag.cena || '📖'}
+                </Text>
+              )}
+              {ultimoSom && (
+                <View style={styles.tocando}>
+                  <View style={styles.tocandoBolinha} />
+                  <Text style={styles.tocandoTexto}>{ultimoSom}</Text>
+                </View>
+              )}
+            </View>
 
-        {!!historia.trilha_url && (
-          <View style={styles.trilha}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.trilhaTitulo}>Trilha de fundo</Text>
-              <Text style={styles.trilhaInfo}>
-                {trilhaLigada ? 'Volume baixo · abaixa sozinha quando um som toca' : 'Desligada'}
+            {erro && <Text style={styles.erro}>{erro}</Text>}
+
+            <View style={[styles.pagina, { borderColor: corPagina }]}>
+              <Text style={styles.paragrafo}>
+                {partes.map((p, j) => (
+                  <Text
+                    key={j}
+                    style={p.tipo === 'tocado' ? styles.tocado : p.tipo === 'proximo' ? styles.proximo : p.tipo === 'gatilho' ? styles.gatilho : undefined}
+                  >
+                    {p.texto}
+                  </Text>
+                ))}
               </Text>
             </View>
-            <Switch
-              value={trilhaLigada}
-              onValueChange={alternarTrilha}
-              trackColor={{ true: colors.verde, false: colors.textoClaro }}
-              thumbColor={colors.branco}
-              accessibilityLabel="Trilha de fundo"
-            />
-          </View>
+
+            {ouvindo && !!ouvidoAgora && (
+              <Text style={styles.ouvido} numberOfLines={2}>
+                Ouvindo: “{ouvidoAgora}”
+              </Text>
+            )}
+          </>
         )}
-
-        {erro && <Text style={styles.erro}>{erro}</Text>}
-
-        <View style={styles.pagina}>
-          {paragrafos.map((partes, i) => (
-            <Text key={i} style={styles.paragrafo}>
-              {partes.map((p, j) => (
-                <Text
-                  key={j}
-                  style={p.tipo === 'tocado' ? styles.tocado : p.tipo === 'proximo' ? styles.proximo : p.tipo === 'gatilho' ? styles.gatilho : undefined}
-                >
-                  {p.texto}
-                </Text>
-              ))}
-            </Text>
-          ))}
-        </View>
-
-        {ouvindo && !!ouvidoAgora && (
-          <Text style={styles.ouvido} numberOfLines={2}>
-            Ouvindo: “{ouvidoAgora}”
-          </Text>
-        )}
-
         <Rodape />
       </ScrollView>
 
       <View style={styles.controles}>
-        <TouchableOpacity style={styles.botaoLateral} onPress={recomecar} accessibilityLabel="Recomeçar os sons da história">
-          <Text style={styles.botaoLateralTexto}>↺</Text>
+        <TouchableOpacity
+          style={[styles.botaoLateral, pagina === 0 && { opacity: 0.35 }]}
+          disabled={pagina === 0}
+          onPress={() => irPara(pagina - 1)}
+          accessibilityLabel="Página anterior"
+        >
+          <Text style={styles.botaoLateralTexto}>‹</Text>
         </TouchableOpacity>
         <View style={{ alignItems: 'center', gap: 6 }}>
           <TouchableOpacity
@@ -284,13 +348,20 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
             onPress={ouvindo ? pararDeOuvir : ligarMicrofone}
             accessibilityLabel={ouvindo ? 'Pausar o microfone' : 'Ligar o microfone'}
           >
-            <Text style={styles.micIcone}>{ouvindo ? '❚❚' : '●'}</Text>
+            <Text style={styles.micIcone}>{ouvindo ? '❚❚' : '🎤'}</Text>
           </TouchableOpacity>
           <Text style={[styles.micStatus, { color: ouvindo ? colors.verde : colors.textoSuave }]}>
             {ouvindo ? 'Ouvindo… pode ler' : 'Toque para começar'}
           </Text>
         </View>
-        <View style={{ width: 52 }} />
+        <TouchableOpacity
+          style={[styles.botaoLateral, terminou && { opacity: 0.35 }]}
+          disabled={terminou}
+          onPress={() => irPara(pagina + 1)}
+          accessibilityLabel="Próxima página"
+        >
+          <Text style={styles.botaoLateralTexto}>›</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -298,83 +369,69 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
 
 type Parte = { texto: string; tipo: 'normal' | 'gatilho' | 'tocado' | 'proximo' };
 
-// Quebra o texto em parágrafos e marca as palavras-gatilho:
-// verde = já tocou, azul = próxima, sublinhado leve = ainda vai tocar.
-function montarParagrafos(texto: string, marcas: { id: string; ini: number; fim: number }[], tocados: string[], proximoId: string | null) {
+// Marca as palavras-gatilho da página: verde = já tocou, azul = próxima,
+// sublinhado leve = ainda vai tocar.
+function montarPartes(texto: string, pagina: number, locais: Map<string, Local>, tocados: string[], proximoId: string | null) {
+  const marcas = Array.from(locais.entries())
+    .filter(([, l]) => l.pagina === pagina)
+    .map(([id, l]) => ({ id, ini: l.ini, fim: l.fim }))
+    .sort((a, b) => a.ini - b.ini);
   const partes: Parte[] = [];
   let pos = 0;
   for (const m of marcas) {
+    if (m.ini < pos) continue;
     if (m.ini > pos) partes.push({ texto: texto.slice(pos, m.ini), tipo: 'normal' });
     const tipo = tocados.includes(m.id) ? 'tocado' : m.id === proximoId ? 'proximo' : 'gatilho';
     partes.push({ texto: texto.slice(m.ini, m.fim), tipo });
     pos = m.fim;
   }
   if (pos < texto.length) partes.push({ texto: texto.slice(pos), tipo: 'normal' });
-
-  const paragrafos: Parte[][] = [[]];
-  for (const p of partes) {
-    const pedacos = p.texto.split(/\n\s*\n/);
-    pedacos.forEach((pedaco, i) => {
-      if (i > 0) paragrafos.push([]);
-      if (pedaco) paragrafos[paragrafos.length - 1].push({ texto: pedaco, tipo: p.tipo });
-    });
-  }
-  return paragrafos.filter((p) => p.length > 0);
+  return partes;
 }
 
 const styles = StyleSheet.create({
   fundo: { flex: 1, backgroundColor: colors.fundo },
-  topo: {
-    backgroundColor: colors.navy,
-    paddingTop: 48,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-    borderBottomLeftRadius: radius.xl,
-    borderBottomRightRadius: radius.xl,
-    gap: spacing.sm,
-  },
+  topo: { backgroundColor: colors.navy, paddingTop: 44, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, gap: spacing.sm },
   linhaTopo: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   botaoTopo: { width: 44, height: 44, borderRadius: radius.md, backgroundColor: colors.navy2, alignItems: 'center', justifyContent: 'center' },
   botaoTopoTexto: { color: colors.branco, fontSize: 28, lineHeight: 30, fontWeight: '700' },
-  titulo: { flex: 1, textAlign: 'center', color: colors.branco, fontSize: 18, fontWeight: '800' },
-  barra: { height: 8, borderRadius: 4, backgroundColor: colors.navy2, overflow: 'hidden', marginTop: spacing.sm },
-  barraCheia: { height: 8, backgroundColor: colors.azul },
+  botaoTopoIcone: { fontSize: 20 },
+  titulo: { flex: 1, textAlign: 'center', color: colors.branco, fontSize: 18, fontWeight: '900' },
+  barra: { height: 10, borderRadius: 5, backgroundColor: colors.navy2, overflow: 'hidden', marginTop: spacing.xs },
+  barraCheia: { height: 10 },
   linhaInfo: { flexDirection: 'row', justifyContent: 'space-between' },
-  info: { color: colors.textoClaro, fontSize: 12 },
+  info: { color: colors.textoClaro, fontSize: 13, fontWeight: '600' },
   conteudo: { padding: spacing.lg, gap: spacing.md },
+  ilustracao: { height: 220, borderRadius: radius.xl, borderWidth: 3, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: spacing.lg },
+  imagem: { width: '100%', height: '100%' },
+  cena: { fontSize: 96 },
   tocando: {
-    alignSelf: 'flex-start',
+    position: 'absolute',
+    top: 10,
+    left: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     backgroundColor: colors.branco,
     borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: colors.borda,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
   },
-  tocandoBolinha: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.verde },
-  tocandoTexto: { fontSize: 13, fontWeight: '700', color: colors.texto },
-  trilha: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.branco,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.borda,
-    padding: spacing.md,
-  },
-  trilhaTitulo: { fontSize: 13, fontWeight: '700', color: colors.texto },
-  trilhaInfo: { fontSize: 12, color: colors.textoSuave },
+  tocandoBolinha: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.verde },
+  tocandoTexto: { fontSize: 13, fontWeight: '800', color: colors.texto },
   erro: { color: colors.branco, backgroundColor: colors.vermelho, padding: spacing.md, borderRadius: radius.md, fontSize: 14 },
-  pagina: { backgroundColor: colors.branco, borderRadius: radius.xl, padding: spacing.xl, gap: spacing.lg },
-  paragrafo: { fontSize: 22, lineHeight: 35, color: colors.texto, fontWeight: '600' },
+  pagina: { backgroundColor: colors.branco, borderRadius: radius.xl, padding: spacing.xl, borderWidth: 2 },
+  paragrafo: { fontSize: 23, lineHeight: 36, color: colors.texto, fontWeight: '600' },
   gatilho: { textDecorationLine: 'underline', textDecorationColor: colors.borda },
   proximo: { backgroundColor: colors.azulClaro, color: colors.texto, textDecorationLine: 'underline', textDecorationColor: colors.azul },
   tocado: { color: colors.verde, textDecorationLine: 'underline', textDecorationColor: colors.verde },
   ouvido: { fontSize: 13, color: colors.textoSuave, fontStyle: 'italic', textAlign: 'center' },
+  fim: { backgroundColor: colors.branco, borderRadius: radius.xl, borderWidth: 3, padding: spacing.xxl, alignItems: 'center', gap: spacing.md },
+  fimEmoji: { fontSize: 48 },
+  fimTitulo: { fontSize: 26, fontWeight: '900', color: colors.texto },
+  fimTexto: { fontSize: 17, color: colors.textoSuave, textAlign: 'center', marginBottom: spacing.sm },
+  botaoGrande: { alignSelf: 'stretch', backgroundColor: colors.verde, borderRadius: radius.md, minHeight: 54, alignItems: 'center', justifyContent: 'center' },
+  botaoGrandeTexto: { color: colors.branco, fontWeight: '800', fontSize: 17 },
   controles: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -386,13 +443,11 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.xxl,
   },
-  botaoLateral: { width: 52, height: 52, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.borda, backgroundColor: colors.fundo, alignItems: 'center', justifyContent: 'center' },
-  botaoLateralTexto: { fontSize: 24, color: colors.texto },
+  botaoLateral: { width: 60, height: 60, borderRadius: radius.lg, backgroundColor: colors.navy, alignItems: 'center', justifyContent: 'center' },
+  botaoLateralTexto: { fontSize: 36, lineHeight: 40, color: colors.branco, fontWeight: '800' },
   mic: { width: 84, height: 84, borderRadius: 42, borderWidth: 6, alignItems: 'center', justifyContent: 'center' },
   micLigado: { backgroundColor: colors.verde, borderColor: colors.verdeClaro },
   micDesligado: { backgroundColor: colors.navy2, borderColor: colors.borda },
-  micIcone: { color: colors.branco, fontSize: 26, fontWeight: '900' },
-  micStatus: { fontSize: 13, fontWeight: '700' },
-  botaoRedondo: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.navy, alignItems: 'center', justifyContent: 'center' },
-  botaoRedondoTexto: { color: colors.branco, fontSize: 28, fontWeight: '700' },
+  micIcone: { color: colors.branco, fontSize: 30, fontWeight: '900' },
+  micStatus: { fontSize: 13, fontWeight: '800' },
 });
