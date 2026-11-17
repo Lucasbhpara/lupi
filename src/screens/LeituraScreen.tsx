@@ -126,7 +126,7 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
         // Fim da página atual: vira a página sozinho.
         const fimPg = finaisDePagina[atual];
         if (fimPg) {
-          const achado = acharFrase(ouvido, fimPg, consumido.current);
+          const achado = acharFrase(ouvido, fimPg, consumido.current, false);
           if (achado && (!melhor || achado.pos < melhor.pos)) melhor = { tipo: 'pagina', ...achado };
         }
         if (!melhor) break;
@@ -206,6 +206,20 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
     consumido.current = 0;
     setOuvidoAgora('');
     irPara(0);
+  }
+
+  // Rede de segurança: encostar na palavra destacada toca o som na mão.
+  function tocarNaMao(id: string) {
+    const g = historia?.gatilhos.find((x) => x.id === id);
+    if (!g) return;
+    if (tocadosRef.current.has(g.id)) {
+      mesa.tocar(g.efeito);
+      setUltimoSom(g.efeito.nome);
+      if (timerSom.current) clearTimeout(timerSom.current);
+      timerSom.current = setTimeout(() => setUltimoSom(null), 4000);
+    } else {
+      disparar(g);
+    }
   }
 
   function alternarTrilha() {
@@ -316,12 +330,16 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
                   <Text
                     key={j}
                     style={p.tipo === 'tocado' ? styles.tocado : p.tipo === 'proximo' ? styles.proximo : p.tipo === 'gatilho' ? styles.gatilho : undefined}
+                    onPress={p.id ? () => tocarNaMao(p.id!) : undefined}
+                    suppressHighlighting={false}
                   >
                     {p.texto}
                   </Text>
                 ))}
               </Text>
             </View>
+
+            <Text style={styles.dicaToque}>Se um som não tocar, encoste na palavra colorida 👆</Text>
 
             {ouvindo && !!ouvidoAgora && (
               <Text style={styles.ouvido} numberOfLines={2}>
@@ -367,7 +385,7 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
   );
 }
 
-type Parte = { texto: string; tipo: 'normal' | 'gatilho' | 'tocado' | 'proximo' };
+type Parte = { texto: string; tipo: 'normal' | 'gatilho' | 'tocado' | 'proximo'; id?: string };
 
 // Marca as palavras-gatilho da página: verde = já tocou, azul = próxima,
 // sublinhado leve = ainda vai tocar.
@@ -382,7 +400,7 @@ function montarPartes(texto: string, pagina: number, locais: Map<string, Local>,
     if (m.ini < pos) continue;
     if (m.ini > pos) partes.push({ texto: texto.slice(pos, m.ini), tipo: 'normal' });
     const tipo = tocados.includes(m.id) ? 'tocado' : m.id === proximoId ? 'proximo' : 'gatilho';
-    partes.push({ texto: texto.slice(m.ini, m.fim), tipo });
+    partes.push({ texto: texto.slice(m.ini, m.fim), tipo, id: m.id });
     pos = m.fim;
   }
   if (pos < texto.length) partes.push({ texto: texto.slice(pos), tipo: 'normal' });
@@ -422,9 +440,10 @@ const styles = StyleSheet.create({
   erro: { color: colors.branco, backgroundColor: colors.vermelho, padding: spacing.md, borderRadius: radius.md, fontSize: 14 },
   pagina: { backgroundColor: colors.branco, borderRadius: radius.xl, padding: spacing.xl, borderWidth: 2 },
   paragrafo: { fontSize: 23, lineHeight: 36, color: colors.texto, fontWeight: '600' },
-  gatilho: { textDecorationLine: 'underline', textDecorationColor: colors.borda },
+  gatilho: { color: colors.azul, textDecorationLine: 'underline', textDecorationColor: colors.azul },
   proximo: { backgroundColor: colors.azulClaro, color: colors.texto, textDecorationLine: 'underline', textDecorationColor: colors.azul },
   tocado: { color: colors.verde, textDecorationLine: 'underline', textDecorationColor: colors.verde },
+  dicaToque: { fontSize: 13, color: colors.textoSuave, textAlign: 'center', fontWeight: '600' },
   ouvido: { fontSize: 13, color: colors.textoSuave, fontStyle: 'italic', textAlign: 'center' },
   fim: { backgroundColor: colors.branco, borderRadius: radius.xl, borderWidth: 3, padding: spacing.xxl, alignItems: 'center', gap: spacing.md },
   fimEmoji: { fontSize: 48 },
