@@ -1,0 +1,76 @@
+{
+  "expo": {
+    "name": "LUPI",
+    "slug": "lupi",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "android": {
+      "package": "com.lucasalberto.lupi",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon-foreground.png",
+        "backgroundColor": "#0E1B2C"
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lucasalberto.lupi",
+      "icon": "./assets/icon.png",
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "O LUPI reconhece as palavras da história para tocar os sons.",
+        "NSMicrophoneUsageDescription": "O LUPI escuta você lendo a história para tocar os sons na hora certa."
+      }
+    },
+    "web": {
+      "favicon": "./assets/icon.png",
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "imageWidth": 200,
+          "backgroundColor": "#0E1B2C"
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "O LUPI escuta você lendo a história para tocar os sons na hora certa.",
+          "speechRecognitionPermission": "O LUPI reconhece as palavras da história para tocar os sons.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "O LUPI escuta você lendo a história para tocar os sons na hora certa."
+        }
+      ]
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "fa1618e4-55c3-4aef-bae9-fe71ffda960c"
+      }
+    },
+    "owner": "lucassbh327"
+  }
+}

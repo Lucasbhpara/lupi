@@ -1,0 +1,18 @@
+node_modules/
+.expo/
+dist/
+web-build/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.DS_Store
+*.pem
+.env*.local
+*.tsbuildinfo
+npm-debug.*
+
+# Os MP3 originais ficam no Supabase (Storage), não precisam ir pro Git.
+/*.mp3

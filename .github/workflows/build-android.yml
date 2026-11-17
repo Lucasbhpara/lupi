@@ -1,0 +1,62 @@
+name: Build Android (EAS local)
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Perfil do eas.json pra usar na build'
+        required: true
+        default: 'playstore'
+        type: choice
+        options:
+          - playstore
+          - production
+          - preview
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Baixar o código do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Instalar dependências do projeto
+        run: npm install
+
+      - name: Instalar EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Configurar memória do Gradle
+        run: |
+          mkdir -p ~/.gradle
+          cat <<'EOF' >> ~/.gradle/gradle.properties
+          org.gradle.jvmargs=-Xmx4608m -XX:MaxMetaspaceSize=1024m
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          EOF
+
+      - name: Gerar o build do Android (local)
+        run: |
+          if [ "${{ inputs.profile }}" = "playstore" ]; then EXT=aab; else EXT=apk; fi
+          echo "EXT=$EXT" >> "$GITHUB_ENV"
+          eas build --platform android --profile ${{ inputs.profile }} --local --non-interactive --output ${{ github.workspace }}/app-release.$EXT
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Publicar o arquivo gerado
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-${{ inputs.profile }}
+          path: ${{ github.workspace }}/app-release.${{ env.EXT }}
