@@ -1,0 +1,27 @@
+name: Publicar APK (link direto)
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "ID da build Android"
+        required: true
+permissions:
+  contents: write
+  actions: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar APK da build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "${{ inputs.run_id }}" -R "${{ github.repository }}" -n app-release-preview -D apk
+          ls -la apk
+          mv "$(ls apk/*.apk | head -1)" LUPI.apk
+      - name: Publicar como release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="apk-${{ inputs.run_id }}"
+          gh release create "$TAG" LUPI.apk -R "${{ github.repository }}" --title "LUPI (teste) ${{ inputs.run_id }}" --notes "APK de teste do LUPI. by Lucas Alberto" --latest
