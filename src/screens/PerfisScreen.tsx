@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, TextInput, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, TextInput, ScrollView, Image } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Perfil, listarPerfis, criarPerfil, atualizarPerfil } from '../data/api';
 import { supabase } from '../lib/supabase';
@@ -7,6 +7,8 @@ import { colors, coresPerfil, simbolosPerfil, radius, spacing } from '../theme/c
 import Rodape from '../components/Rodape';
 import Avatar from '../components/Avatar';
 import FaixaArcoIris from '../components/FaixaArcoIris';
+
+const lupi = require('../../assets/lupi.png');
 
 export default function PerfisScreen({ onEscolher }: { onEscolher: (p: Perfil) => void }) {
   const [perfis, setPerfis] = useState<Perfil[] | null>(null);
@@ -74,6 +76,7 @@ export default function PerfisScreen({ onEscolher }: { onEscolher: (p: Perfil) =
       <FaixaArcoIris altura={8} />
       <ScrollView contentContainerStyle={styles.conteudo}>
         <View style={styles.topo}>
+          <Image source={lupi} style={styles.lupi} resizeMode="contain" accessibilityLabel="Lupi, o lobinho" />
           <Text style={styles.logo}>LUPI</Text>
           <Text style={styles.pergunta}>Quem vai ouvir hoje?</Text>
         </View>
@@ -175,6 +178,7 @@ const styles = StyleSheet.create({
   fundo: { flex: 1, backgroundColor: colors.navy, paddingTop: 36 },
   conteudo: { padding: spacing.xl, gap: spacing.xl, paddingBottom: 40 },
   topo: { alignItems: 'center' },
+  lupi: { width: 110, height: 110 },
   logo: { color: colors.branco, fontSize: 30, fontWeight: '900', letterSpacing: 3 },
   pergunta: { color: colors.branco, fontSize: 24, fontWeight: '800', marginTop: spacing.lg },
   grade: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: spacing.xl },

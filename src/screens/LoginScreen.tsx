@@ -6,7 +6,7 @@ import { colors, radius, spacing } from '../theme/colors';
 import Rodape from '../components/Rodape';
 import FaixaArcoIris from '../components/FaixaArcoIris';
 
-const infinito = require('../../assets/infinito.png');
+const lupi = require('../../assets/lupi.png');
 
 // Usuário curto: quem digitar só "familia" entra como "familia@lupi.app".
 // Quem digitar um e-mail completo entra com o e-mail mesmo.
@@ -38,7 +38,7 @@ export default function LoginScreen() {
     <KeyboardAvoidingView style={styles.fundo} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <StatusBar style="light" />
       <View style={styles.topo}>
-        <Image source={infinito} style={styles.infinito} resizeMode="contain" accessibilityLabel="Infinito arco-íris" />
+        <Image source={lupi} style={styles.lupi} resizeMode="contain" accessibilityLabel="Lupi, o lobinho de fone arco-íris" />
         <Text style={styles.logo}>LUPI</Text>
         <Text style={styles.slogan}>Você lê, a história ganha vida.</Text>
       </View>
@@ -80,7 +80,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   fundo: { flex: 1, backgroundColor: colors.navy, justifyContent: 'center', padding: spacing.xl },
   topo: { alignItems: 'center', marginBottom: spacing.xxl },
-  infinito: { width: 120, height: 60, marginBottom: spacing.sm },
+  lupi: { width: 150, height: 150, marginBottom: spacing.xs },
   logo: { color: colors.branco, fontSize: 48, fontWeight: '900', letterSpacing: 4 },
   slogan: { color: colors.textoClaro, fontSize: 15, marginTop: spacing.xs },
   cartao: { backgroundColor: colors.branco, borderRadius: radius.xl, overflow: 'hidden' },
