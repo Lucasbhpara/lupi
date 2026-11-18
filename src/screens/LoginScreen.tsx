@@ -13,7 +13,11 @@ const lupi = require('../../assets/lupi.png');
 export const DOMINIO_CURTO = '@lupi.app';
 export function emailDoUsuario(usuario: string) {
   const u = usuario.trim().toLowerCase();
-  return u.includes('@') ? u : `${u}${DOMINIO_CURTO}`;
+  if (u.includes('@')) return u;
+  // "Lucas Alberto" vira "lucasalberto@lupi.app" (sem espaços e sem acentos)
+  const semAcento = typeof u.normalize === 'function' ? u.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : u;
+  const curto = semAcento.replace(/[^a-z0-9._-]/g, '');
+  return `${curto}${DOMINIO_CURTO}`;
 }
 
 export default function LoginScreen() {
