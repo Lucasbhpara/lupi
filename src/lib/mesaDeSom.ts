@@ -42,7 +42,28 @@ export class MesaDeSom {
     this.trilha?.pause();
   }
 
-  // `tocarAgora`: só começa a tocar se o microfone estiver ligado.
+  // Fim da história: a trilha vai sumindo devagar e para.
+  encerrarTrilha() {
+    const t = this.trilha;
+    if (!t) return;
+    if (this.timerVolta) clearTimeout(this.timerVolta);
+    let passo = 0;
+    const inicial = t.volume;
+    const timer = setInterval(() => {
+      passo++;
+      if (this.trilha !== t || passo >= 10) {
+        clearInterval(timer);
+        try {
+          t.pause();
+          t.volume = this.volumeTrilha;
+        } catch {}
+        return;
+      }
+      t.volume = inicial * (1 - passo / 10);
+    }, 200);
+  }
+
+    // `tocarAgora`: só começa a tocar se o microfone estiver ligado.
   ligarTrilha(ligada: boolean, tocarAgora: boolean) {
     this.trilhaLigada = ligada;
     if (!this.trilha) return;

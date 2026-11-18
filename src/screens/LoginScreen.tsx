@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Image } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Image, ScrollView, Keyboard } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { supabase } from '../lib/supabase';
 import { colors, radius, spacing } from '../theme/colors';
@@ -38,13 +38,25 @@ export default function LoginScreen() {
     if (error) setErro('Usuário ou senha não conferem.');
   }
 
+  // Com o teclado aberto, o Lupi encolhe para a caixa de texto não ficar escondida.
+  const [tecladoAberto, setTecladoAberto] = useState(false);
+  useEffect(() => {
+    const a = Keyboard.addListener('keyboardDidShow', () => setTecladoAberto(true));
+    const b = Keyboard.addListener('keyboardDidHide', () => setTecladoAberto(false));
+    return () => {
+      a.remove();
+      b.remove();
+    };
+  }, []);
+
   return (
-    <KeyboardAvoidingView style={styles.fundo} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={styles.fundo} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <StatusBar style="light" />
-      <View style={styles.topo}>
-        <Image source={lupi} style={styles.lupi} resizeMode="contain" accessibilityLabel="Lupi, o lobinho de fone arco-íris" />
+      <ScrollView contentContainerStyle={styles.rolagem} keyboardShouldPersistTaps="handled">
+      <View style={[styles.topo, tecladoAberto && styles.topoCompacto]}>
+        <Image source={lupi} style={tecladoAberto ? styles.lupiPequeno : styles.lupi} resizeMode="contain" accessibilityLabel="Lupi, o lobinho de fone arco-íris" />
         <Text style={styles.logo}>LUPI</Text>
-        <Text style={styles.slogan}>Você lê, a história ganha vida.</Text>
+        {!tecladoAberto && <Text style={styles.slogan}>Você lê, a história ganha vida.</Text>}
       </View>
       <View style={styles.cartao}>
         <FaixaArcoIris altura={6} />
@@ -57,7 +69,8 @@ export default function LoginScreen() {
             onChangeText={setUsuario}
             autoCapitalize="none"
             autoCorrect={false}
-            placeholder="familia"
+            placeholder="Seu nome"
+            returnKeyType="next"
             placeholderTextColor={colors.textoClaro}
           />
           <Text style={styles.rotulo}>Senha</Text>
@@ -76,15 +89,19 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
       </View>
-      <Rodape claro comMensagem />
+      {!tecladoAberto && <Rodape claro comMensagem />}
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  fundo: { flex: 1, backgroundColor: colors.navy, justifyContent: 'center', padding: spacing.xl },
+  fundo: { flex: 1, backgroundColor: colors.navy },
+  rolagem: { flexGrow: 1, justifyContent: 'center', padding: spacing.xl },
   topo: { alignItems: 'center', marginBottom: spacing.xxl },
+  topoCompacto: { marginBottom: spacing.md },
   lupi: { width: 150, height: 150, marginBottom: spacing.xs },
+  lupiPequeno: { width: 64, height: 64 },
   logo: { color: colors.branco, fontSize: 48, fontWeight: '900', letterSpacing: 4 },
   slogan: { color: colors.textoClaro, fontSize: 15, marginTop: spacing.xs },
   cartao: { backgroundColor: colors.branco, borderRadius: radius.xl, overflow: 'hidden' },

@@ -79,6 +79,19 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
     salvarProgresso(leituraId.current, progresso, terminou).catch(() => {});
   }, [pagina, terminou, progresso]);
 
+  // Acabou a história: desliga o microfone e a trilha vai sumindo.
+  useEffect(() => {
+    if (!terminou) return;
+    if (ouvindoRef.current) {
+      ouvindoRef.current = false;
+      setOuvindo(false);
+      try {
+        ExpoSpeechRecognitionModule.stop();
+      } catch {}
+    }
+    mesa.encerrarTrilha();
+  }, [terminou, mesa]);
+
   // ---------- Páginas ----------
   const irPara = useCallback(
     (nova: number, manual = false) => {
