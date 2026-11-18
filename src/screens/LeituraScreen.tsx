@@ -29,7 +29,9 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
   const paginaRef = useRef(0);
   const tocadosRef = useRef<Set<string>>(new Set());
   const finais = useRef(''); // tudo o que o microfone já ouviu, frases fechadas
-  const consumido = useRef(0); // até onde do texto ouvido já foi conferido
+  const consumido = useRef(0); // até onde do texto ouvido já foi conferido (sons)
+  const inicioPagina = useRef(0); // onde, no texto ouvido, a página atual começou
+  const tamanhoOuvido = useRef(0);
   const timerSom = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scroll = useRef<ScrollView>(null);
 
@@ -79,13 +81,18 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
 
   // ---------- Páginas ----------
   const irPara = useCallback(
-    (nova: number) => {
+    (nova: number, manual = false) => {
       if (!historia) return;
       if (nova >= historia.paginas.length) {
         setTerminou(true);
         return;
       }
       const p = Math.max(0, nova);
+      if (manual) {
+        // Mudou de página na mão: o que já foi falado não vale para a página nova.
+        consumido.current = tamanhoOuvido.current;
+        inicioPagina.current = tamanhoOuvido.current;
+      }
       paginaRef.current = p;
       setPagina(p);
       setTerminou(false);
@@ -111,7 +118,9 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
     (textoOuvido: string) => {
       if (!historia) return;
       const ouvido = normalizar(textoOuvido);
+      tamanhoOuvido.current = ouvido.length;
       if (consumido.current > ouvido.length) consumido.current = ouvido.length;
+      if (inicioPagina.current > ouvido.length) inicioPagina.current = ouvido.length;
       for (let volta = 0; volta < 6; volta++) {
         const atual = paginaRef.current;
         let melhor: { tipo: 'som' | 'pagina'; g?: Gatilho; pos: number; fim: number } | null = null;
@@ -123,19 +132,26 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
           const achado = acharFrase(ouvido, normalizar(g.palavra_chave), consumido.current);
           if (achado && (!melhor || achado.pos < melhor.pos)) melhor = { tipo: 'som', g, ...achado };
         }
-        // Fim da página atual: vira a página sozinho.
+        // Fim da página atual: vira a página sozinho. Procura desde o começo da
+        // página (e não só depois do último som), porque a página pode terminar
+        // justamente numa palavra com som ("...com o coração batendo forte.").
         const fimPg = finaisDePagina[atual];
         if (fimPg) {
-          const achado = acharFrase(ouvido, fimPg, consumido.current, false);
-          if (achado && (!melhor || achado.pos < melhor.pos)) melhor = { tipo: 'pagina', ...achado };
+          const achado = acharFrase(ouvido, fimPg, inicioPagina.current, false);
+          // Um som que aparece antes do fim da página toca primeiro.
+          if (achado && (!melhor || achado.fim <= melhor.pos)) melhor = { tipo: 'pagina', ...achado };
         }
         if (!melhor) break;
-        consumido.current = melhor.fim;
+        consumido.current = Math.max(consumido.current, melhor.fim);
         if (melhor.tipo === 'som' && melhor.g) {
           const pg = locais.get(melhor.g.id)?.pagina ?? atual;
-          if (pg > atual) irPara(pg);
+          if (pg > atual) {
+            inicioPagina.current = melhor.pos;
+            irPara(pg);
+          }
           disparar(melhor.g);
         } else {
+          inicioPagina.current = melhor.fim;
           // Um respiro antes de virar, para dar tempo de ver a página inteira.
           const proxima = atual + 1;
           paginaRef.current = Math.min(proxima, totalPaginas - 1);
@@ -204,8 +220,10 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
     setTocados([]);
     finais.current = '';
     consumido.current = 0;
+    inicioPagina.current = 0;
+    tamanhoOuvido.current = 0;
     setOuvidoAgora('');
-    irPara(0);
+    irPara(0, true);
   }
 
   // Rede de segurança: encostar na palavra destacada toca o som na mão.
@@ -355,7 +373,7 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
         <TouchableOpacity
           style={[styles.botaoLateral, pagina === 0 && { opacity: 0.35 }]}
           disabled={pagina === 0}
-          onPress={() => irPara(pagina - 1)}
+          onPress={() => irPara(pagina - 1, true)}
           accessibilityLabel="Página anterior"
         >
           <Text style={styles.botaoLateralTexto}>‹</Text>
@@ -375,7 +393,7 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
         <TouchableOpacity
           style={[styles.botaoLateral, terminou && { opacity: 0.35 }]}
           disabled={terminou}
-          onPress={() => irPara(pagina + 1)}
+          onPress={() => irPara(pagina + 1, true)}
           accessibilityLabel="Próxima página"
         >
           <Text style={styles.botaoLateralTexto}>›</Text>

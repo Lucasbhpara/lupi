@@ -53,8 +53,9 @@ function parecida(ouvida: string, esperada: string) {
   if (esperada.length >= 5 && ouvida.length >= raiz && ouvida.slice(0, raiz) === esperada.slice(0, raiz)) return true;
   // Palavra falada ou reconhecida com uma ou duas letras diferentes
   // ("lareira" x "lareiras", "trovão" x "torvão").
-  if (esperada.length >= 6) return distancia(ouvida, esperada) <= 2;
-  if (esperada.length >= 4) return distancia(ouvida, esperada) <= 1;
+  // Duas letras só em palavras compridas, para não confundir "rápida" com "rajada".
+  if (esperada.length >= 8) return distancia(ouvida, esperada) <= 2;
+  if (esperada.length >= 5) return distancia(ouvida, esperada) <= 1;
   return false;
 }
 
