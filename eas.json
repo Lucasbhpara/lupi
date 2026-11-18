@@ -16,6 +16,14 @@
     "production": {
       "autoIncrement": true,
       "channel": "production"
+    },
+    "playstore": {
+      "autoIncrement": true,
+      "channel": "production",
+      "environment": "production",
+      "android": {
+        "buildType": "app-bundle"
+      }
     }
   },
   "submit": {
