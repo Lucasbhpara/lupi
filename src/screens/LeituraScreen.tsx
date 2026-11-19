@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView
 import { StatusBar } from 'expo-status-bar';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { Gatilho, Historia, Perfil, carregarHistoria, iniciarLeitura, salvarProgresso } from '../data/api';
-import { acharFrase, fraseFinal, localizarGatilhos, normalizar } from '../lib/frases';
+import { acharFrase, fraseAntes, fraseFinal, localizarGatilhos, normalizar } from '../lib/frases';
 import { MesaDeSom } from '../lib/mesaDeSom';
 import { colors, corClaraDaVez, corDaVez, radius, spacing } from '../theme/colors';
 import Rodape from '../components/Rodape';
@@ -69,6 +69,16 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
     [historia, textos]
   );
   const finaisDePagina = useMemo(() => textos.map(fraseFinal), [textos]);
+  // O reconhecimento de voz chega um pouquinho atrasado. Para o som sair na
+  // hora certa, ele já toca quando a pessoa lê as palavras de logo antes.
+  const antecipar = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const [id, l] of locais) {
+      const f = fraseAntes(textos[l.pagina] ?? '', l.ini);
+      if (f) m.set(id, f);
+    }
+    return m;
+  }, [locais, textos]);
   const totalPaginas = textos.length;
 
   const progresso = terminou ? 100 : totalPaginas ? Math.round((pagina / totalPaginas) * 100) : 0;
@@ -144,6 +154,11 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
           if (pg < atual || pg > atual + 1) continue;
           const achado = acharFrase(ouvido, normalizar(g.palavra_chave), consumido.current);
           if (achado && (!melhor || achado.pos < melhor.pos)) melhor = { tipo: 'som', g, ...achado };
+          const antes = pg === atual ? antecipar.get(g.id) : undefined;
+          if (antes) {
+            const cedo = acharFrase(ouvido, antes, Math.max(consumido.current, inicioPagina.current), false);
+            if (cedo && (!melhor || cedo.pos < melhor.pos)) melhor = { tipo: 'som', g, ...cedo };
+          }
         }
         // Fim da página atual: vira a página sozinho. Procura desde o começo da
         // página (e não só depois do último som), porque a página pode terminar
@@ -172,7 +187,7 @@ export default function LeituraScreen({ perfil, historiaId, onVoltar }: Props) {
         }
       }
     },
-    [historia, locais, finaisDePagina, disparar, irPara, totalPaginas]
+    [historia, locais, antecipar, finaisDePagina, disparar, irPara, totalPaginas]
   );
 
   // ---------- Microfone ----------

@@ -85,7 +85,9 @@ export class MesaDeSom {
     const volume = Math.max(0, Math.min(1, efeito.volume));
     this.limparCorte(efeito.id);
     p.volume = volume;
-    p.seekTo(0).catch(() => {});
+    // Voltar ao começo só se já tocou antes: pedir para ir ao 0 num som que já
+    // está no 0 faz alguns celulares carregarem de novo e atrasa o som.
+    if (p.currentTime > 0.05) p.seekTo(0).catch(() => {});
     p.play();
 
     // Sons longos (chuva, vento...) param sozinhos, sumindo devagar.

@@ -23,7 +23,7 @@ function palavras(texto: string): Palavra[] {
 }
 
 // Palavras comuns demais para, sozinhas, dispararem um som.
-const COMUNS = new Set(['forte', 'fortes', 'pelos', 'pelas', 'todos', 'todas', 'muito', 'muita', 'sempre', 'depois', 'entao', 'ainda', 'sobre', 'entre', 'quando', 'comecou', 'outra', 'outro']);
+const COMUNS = new Set(['forte', 'fortes', 'pelos', 'pelas', 'todos', 'todas', 'muito', 'muita', 'sempre', 'depois', 'entao', 'ainda', 'sobre', 'entre', 'quando', 'comecou', 'outra', 'outro', 'cantando']);
 
 // Palavras curtas (na, a, o, de...) são as que o reconhecimento mais troca;
 // elas não precisam bater para a frase contar.
@@ -49,7 +49,8 @@ function parecida(ouvida: string, esperada: string) {
   if (ouvida === esperada) return true;
   // "soprou" x "soprando", "uivou" x "uivando", "crepitando" x "crepitante":
   // mesmo começo de palavra.
-  const raiz = Math.min(5, esperada.length - 1);
+  // Palavras compridas pedem um começo maior ("passarinhos" não é "passava").
+  const raiz = esperada.length >= 9 ? 7 : Math.min(5, esperada.length - 1);
   if (esperada.length >= 5 && ouvida.length >= raiz && ouvida.slice(0, raiz) === esperada.slice(0, raiz)) return true;
   // Palavra falada ou reconhecida com uma ou duas letras diferentes
   // ("lareira" x "lareiras", "trovão" x "torvão").
@@ -172,4 +173,26 @@ export function marcarGatilhosNoTexto(texto: string, frases: { id: string; palav
     cursor = i + f.length;
   }
   return marcas.sort((a, b) => a.ini - b.ini);
+}
+
+/**
+ * As palavras que vêm logo antes de um som no texto (até 2). O reconhecimento
+ * de voz chega um pouco atrasado; ouvindo estas palavras, o som já sai na hora
+ * em que a palavra dele é lida. Só vale se o trecho for único na página até
+ * ali e tiver pelo menos uma palavra importante, para não tocar fora de hora.
+ */
+export function fraseAntes(textoPagina: string, iniGatilho: number): string | null {
+  const antes = normalizar(textoPagina.slice(0, iniGatilho));
+  const lista = antes.split(' ').filter(Boolean);
+  if (lista.length === 0) return null;
+  const ultimas = lista.slice(-2);
+  const fortes = ultimas.filter(importante);
+  if (fortes.length === 0 || fortes.join('').length < 5) return null;
+  const frase = ultimas.join(' ');
+  // Única até ali: as palavras importantes não podem ter aparecido antes na
+  // página, senão o som tocaria cedo demais.
+  const anterior = antes.slice(0, antes.length - frase.length);
+  const outras = anterior.split(' ').filter(Boolean);
+  if (fortes.some((f) => outras.some((o) => parecida(o, f)))) return null;
+  return frase;
 }
