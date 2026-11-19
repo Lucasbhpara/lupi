@@ -16,7 +16,7 @@ export type HistoriaResumo = {
   favorita: boolean;
 };
 
-export type Efeito = { id: string; nome: string; arquivo_url: string | null; volume: number };
+export type Efeito = { id: string; nome: string; arquivo_url: string | null; volume: number; duracao_max: number | null };
 
 export type Gatilho = { id: string; palavra_chave: string; ordem: number; efeito: Efeito };
 
@@ -124,7 +124,7 @@ export async function carregarHistoria(id: string): Promise<Historia> {
   const { data, error } = await supabase
     .from('historias')
     .select(
-      'id, titulo, texto, cor, trilha_url, trilha_volume, historia_paginas(ordem, texto, imagem_url, cena, cor), historia_gatilhos(id, palavra_chave, ordem, efeitos_sonoros(id, nome, arquivo_url, volume))'
+      'id, titulo, texto, cor, trilha_url, trilha_volume, historia_paginas(ordem, texto, imagem_url, cena, cor), historia_gatilhos(id, palavra_chave, ordem, efeitos_sonoros(id, nome, arquivo_url, volume, duracao_max))'
     )
     .eq('id', id)
     .single();
@@ -141,6 +141,7 @@ export async function carregarHistoria(id: string): Promise<Historia> {
         nome: g.efeitos_sonoros.nome,
         arquivo_url: g.efeitos_sonoros.arquivo_url,
         volume: Number(g.efeitos_sonoros.volume ?? 1),
+        duracao_max: g.efeitos_sonoros.duracao_max != null ? Number(g.efeitos_sonoros.duracao_max) : null,
       },
     }))
     .sort((a: Gatilho, b: Gatilho) => a.ordem - b.ordem);

@@ -9,6 +9,10 @@ export class MesaDeSom {
   private volumeTrilha = 0.15;
   private trilhaLigada = true;
   private timerVolta: ReturnType<typeof setTimeout> | null = null;
+  // Nenhum efeito toca mais que isso (segundos): no fim ele some devagar.
+  private static DURACAO_PADRAO = 6;
+  private cortes = new Map<string, ReturnType<typeof setTimeout>>();
+  private fades = new Map<string, ReturnType<typeof setInterval>>();
 
   async preparar(efeitos: Efeito[], trilhaUrl: string | null, volumeTrilha: number) {
     await setAudioModeAsync({
@@ -78,9 +82,35 @@ export class MesaDeSom {
   tocar(efeito: Efeito) {
     const p = this.efeitos.get(efeito.id);
     if (!p) return;
-    p.volume = Math.max(0, Math.min(1, efeito.volume));
+    const volume = Math.max(0, Math.min(1, efeito.volume));
+    this.limparCorte(efeito.id);
+    p.volume = volume;
     p.seekTo(0).catch(() => {});
     p.play();
+
+    // Sons longos (chuva, vento...) param sozinhos, sumindo devagar.
+    const max = efeito.duracao_max ?? MesaDeSom.DURACAO_PADRAO;
+    this.cortes.set(
+      efeito.id,
+      setTimeout(() => {
+        let passo = 0;
+        const fade = setInterval(() => {
+          passo++;
+          if (passo >= 8) {
+            this.limparCorte(efeito.id);
+            try {
+              p.pause();
+              p.volume = volume;
+            } catch {}
+            return;
+          }
+          try {
+            p.volume = volume * (1 - passo / 8);
+          } catch {}
+        }, 100);
+        this.fades.set(efeito.id, fade);
+      }, Math.max(0.5, max - 0.8) * 1000)
+    );
 
     // A trilha abaixa enquanto o efeito toca e volta depois.
     if (this.trilha && this.trilhaLigada) {
@@ -92,8 +122,18 @@ export class MesaDeSom {
     }
   }
 
+  private limparCorte(id: string) {
+    const c = this.cortes.get(id);
+    if (c) clearTimeout(c);
+    this.cortes.delete(id);
+    const f = this.fades.get(id);
+    if (f) clearInterval(f);
+    this.fades.delete(id);
+  }
+
   liberar() {
     if (this.timerVolta) clearTimeout(this.timerVolta);
+    for (const id of [...this.cortes.keys(), ...this.fades.keys()]) this.limparCorte(id);
     for (const p of this.efeitos.values()) {
       try {
         p.remove();
